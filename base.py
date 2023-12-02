@@ -1,5 +1,7 @@
 import socket
+from termcolor import colored
 
+use_color = False
 
 # Couleurs pour le terminal
 WHITE = "\x1b[97m"
@@ -9,6 +11,33 @@ YELLOW = "\x1b[93m"
 BLUE = "\x1b[94m"
 PURPLE = "\x1b[95m"
 CYAN = "\x1b[96m"
+
+
+def colored_error(err: str) -> str:
+    error = colored(err, "red", attrs=['bold'], no_color=use_color)
+    return error
+
+
+def colored_success(mess: str) -> str:
+    message = colored(mess, "light_green", no_color=use_color)
+    return message
+
+
+def colored_info(info: str) -> str:
+    information = colored(info, 'light_cyan', no_color=use_color)
+    return information
+
+
+def already_exist(file_name):
+    try:
+        file = open(file_name, 'r')
+    except FileNotFoundError:
+        return False
+    except IsADirectoryError:
+        return 'isdir'
+    else:
+        file.close()
+        return True
 
 
 class BaseSocket:
@@ -25,7 +54,7 @@ class BaseSocket:
             if self.connected:
                 return f(*args, **kwargs)
             else:
-                print(f'{RED}‼️ Socket non connecte.{WHITE}')
+                print(colored_error(f'‼️ Socket non connecte.'))
         return wrapper()
 
     def recv_single_data(self, data_len: int, show_progress: bool = False):
@@ -55,8 +84,8 @@ class BaseSocket:
             len_bytes_reveived += len(data)
 
             if show_progress:
-                print(f"Donnees recues: {len_bytes_reveived}/{data_len} | "
-                      f"{CYAN}{round(len_bytes_reveived / data_len * 100, 2)}%")
+                print(f"Donnees recues: {len_bytes_reveived}/{data_len} | " +
+                      colored_info(f"{round(len_bytes_reveived / data_len * 100, 2)}%"))
 
         return all_data
 
