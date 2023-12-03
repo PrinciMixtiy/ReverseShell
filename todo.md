@@ -1,7 +1,10 @@
 # todo
 
-- class decorator
-- tqdm for progress
-- ip address
+- class decorator [x]
+- tqdm for progress [x]
+- ip address [x]
 - parametres avec espace [x]
-- termcolor
+- termcolor [x]
+- no color version
+
+- testing

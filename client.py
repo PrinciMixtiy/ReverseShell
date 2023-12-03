@@ -1,10 +1,7 @@
-import sys
 import time
 
 from base import *
 from commande_spliter import commande_spliter
-
-ENCODING = 'utf-8'
 
 
 class ClientSocket(BaseSocket):
@@ -51,7 +48,7 @@ class ClientSocket(BaseSocket):
 
             else:
                 self.send_header_data(commande.encode(encoding=ENCODING))
-                output = self.recv_header_data(True)
+                output = self.recv_header_data(show_progress=True)
 
                 if output == 'filenotfound'.encode(encoding=ENCODING):
                     print(colored_error("‼️ Le fichier n'existe pas."))
@@ -63,10 +60,10 @@ class ClientSocket(BaseSocket):
                     with open(destination, 'wb') as f:
                         f.write(output)
                     print('Telechargement de ' + colored_info(f'{splited_commande[1]}') + ' dans ' +
-                          colored_info(f'{destination}'))
+                          colored_info(f'{destination}\n'))
 
             if error:
-                new_destination = input('Entrez un nouvelle destination (ou "q" pour quitter): ')
+                new_destination = input('Entrez un nouvelle destination (ou "q" pour quitter)' + colored_info(': '))
                 self.download_file_localy(commande, new_destination)
 
     def screenshot(self, commande, destination):
@@ -102,7 +99,7 @@ class ClientSocket(BaseSocket):
 
             else:
                 self.send_header_data(commande.encode(encoding=ENCODING))
-                output = self.recv_header_data(True)
+                output = self.recv_header_data(show_progress=False)
                 print(output.decode(encoding=ENCODING))
 
         print(colored_success(colored_success(colored_success(f'\n‼️ Deconnecte\n'))))

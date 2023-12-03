@@ -10,12 +10,12 @@ def commande_spliter(cmd: str) -> list:
         splited_commande = cmd.split(' ')
 
     else:
-        i = 0
-        while i < len(quotes_indexs):
+        for i in range(0, len(quotes_indexs), 2):
             splited_commande += cmd[start_index:quotes_indexs[i]].split(' ')
             splited_commande.append(cmd[quotes_indexs[i] + 1:quotes_indexs[i + 1]])
             start_index = quotes_indexs[i + 1] + 1
-            i += 2
+
+        splited_commande += cmd[quotes_indexs[-1]+1:].split(' ')
 
         n_blank = 0
         for j in splited_commande:

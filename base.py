@@ -1,8 +1,16 @@
 import socket
 from termcolor import colored
+from tqdm import tqdm
+from functools import wraps
+import os
+import platform
+
+if 'windows' in platform.platform().lower():
+    os.system('color')
 
 use_color = False
 
+ENCODING = 'utf-8'
 # Couleurs pour le terminal
 WHITE = "\x1b[97m"
 RED = "\x1b[91m"
@@ -48,15 +56,18 @@ class BaseSocket:
         self.connected = False
         self.clientsocket: socket = None
 
-    def is_connected(self, f):
-        """decorator checking if the communication socket is connected"""
-        def wrapper(*args, **kwargs):
+    @staticmethod
+    def is_connected(method):
+        @wraps(method)
+        def _impl(self, *method_args, **method_kwargs):
             if self.connected:
-                return f(*args, **kwargs)
+                return method(self, *method_args, **method_kwargs)
             else:
                 print(colored_error(f'‼️ Socket non connecte.'))
-        return wrapper()
 
+        return _impl
+
+    @is_connected
     def recv_single_data(self, data_len: int, show_progress: bool = False):
         """Reveive data from another socket
 
@@ -69,6 +80,10 @@ class BaseSocket:
         """
         all_data = None
         len_bytes_reveived = 0
+
+        if show_progress:
+            progress = tqdm(range(data_len), colored_success(f"Receiving data"), unit="B", unit_scale=True,
+                            unit_divisor=self.MAX_DATA_SIZE)
 
         while len_bytes_reveived < data_len:
             chunk = min(data_len - len_bytes_reveived, self.MAX_DATA_SIZE)
@@ -84,11 +99,11 @@ class BaseSocket:
             len_bytes_reveived += len(data)
 
             if show_progress:
-                print(f"Donnees recues: {len_bytes_reveived}/{data_len} | " +
-                      colored_info(f"{round(len_bytes_reveived / data_len * 100, 2)}%"))
+                progress.update(len(data))
 
         return all_data
 
+    @is_connected
     def send_header_data(self, data):
         """send data after his header to the receiver socket
 
@@ -96,9 +111,10 @@ class BaseSocket:
             data (bytes): data to send
         """
         cmd_header = str(len(data)).zfill(13)
-        self.clientsocket.sendall(cmd_header.encode())
+        self.clientsocket.sendall(cmd_header.encode(encoding=ENCODING))
         self.clientsocket.sendall(data)
 
+    @is_connected
     def recv_header_data(self, show_progress: bool = False):
         """reveive data after his header from sender socket
 
@@ -109,6 +125,6 @@ class BaseSocket:
             bytes: data received after sending data
         """
         header = self.recv_single_data(13)
-        header = int(header.decode())
+        header = int(header.decode(encoding=ENCODING))
         received_datas = self.recv_single_data(header, show_progress)
         return received_datas
