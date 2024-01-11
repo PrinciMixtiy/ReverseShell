@@ -3,57 +3,21 @@ import os
 import platform
 import time
 
-from termcolor import colored
 from tqdm import tqdm
 from functools import wraps
+
+from string_coloring import colored_success, colored_error, colored_info
 
 if 'windows' in platform.platform().lower():
     os.system('color')
 
-use_color = False
-
 ENCODING = 'utf-8'
-
-# Couleurs pour le terminal
-WHITE = "\x1b[97m"
-RED = "\x1b[91m"
-GREEN = "\x1b[92m"
-YELLOW = "\x1b[93m"
-BLUE = "\x1b[94m"
-PURPLE = "\x1b[95m"
-CYAN = "\x1b[96m"
-
-
-def colored_error(err: str) -> str:
-    error = colored(err, "red", attrs=['bold'], no_color=use_color)
-    return error
-
-
-def colored_success(mess: str) -> str:
-    message = colored(mess, "light_green", no_color=use_color)
-    return message
-
-
-def colored_info(info: str) -> str:
-    information = colored(info, 'light_cyan', no_color=use_color)
-    return information
-
-
-def file_already_exist(file_name):
-    try:
-        file = open(file_name, 'r')
-    except FileNotFoundError:
-        return False
-    except IsADirectoryError:
-        return 'isdir'
-    else:
-        file.close()
-        return True
 
 
 class BaseSocket:
 
-    MAX_DATA_SIZE = 1024
+    MAX_DATA_SIZE = 2048
+    HEADER_LEN = 64
 
     def __init__(self):
         self.connected = False
@@ -71,12 +35,12 @@ class BaseSocket:
         return _impl
 
     @is_connected
-    def recv_single_data(self, data_len: int, show_progress: bool = False):
-        """Reveive data from another socket
+    def recv_single_data(self, data_len: int, show_progress: bool = False) -> bytes:
+        """Reveive single data from another socket
 
         Args:
-            data_len (int): data to be received length
-            show_progress (bool, optional): show data reception progress. Defaults to False.
+            data_len (int): length of data to be received length
+            show_progress (bool, optional): show data reception progress if True. Defaults to False.
 
         Returns:
             bytes: data reveived
@@ -93,7 +57,7 @@ class BaseSocket:
             data_part = self.clientsocket.recv(chunk_len)
 
             if not data_part:
-                return None
+                return b""
             if not all_data:
                 all_data = data_part
             else:
@@ -107,27 +71,27 @@ class BaseSocket:
         return all_data
 
     @is_connected
-    def send_header_data(self, data):
-        """send data after his header to the receiver socket
+    def send_header_and_data(self, data: bytes) -> None:
+        """send the header of data followed by the data to the receiver socket
 
         Args:
             data (bytes): data to send
         """
-        cmd_header = str(len(data)).zfill(13)
-        self.clientsocket.sendall(cmd_header.encode(encoding=ENCODING))
+        data_header = str(len(data)).zfill(self.HEADER_LEN)
+        self.clientsocket.sendall(data_header.encode(encoding=ENCODING))
         self.clientsocket.sendall(data)
 
     @is_connected
-    def recv_header_data(self, show_progress: bool = False):
-        """reveive data after his header from sender socket
+    def recv_header_and_data(self, show_progress: bool = False) -> bytes:
+        """reveive the header of data followed by the data from sender socket
 
         Args:
-            show_progress (bool, optional): show data reception progress. Defaults to False.
+            show_progress (bool, optional): show data reception progress if True. Defaults to False.
 
         Returns:
-            bytes: data received after sending data
+            bytes: data received
         """
-        header = self.recv_single_data(13)
+        header = self.recv_single_data(self.HEADER_LEN)
         header = int(header.decode(encoding=ENCODING))
         received_datas = self.recv_single_data(header, show_progress)
         return received_datas
@@ -139,10 +103,10 @@ class ClientSocket(BaseSocket):
 
     def __init__(self):
         super().__init__()
-        self.clientsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.serveraddress = (None, None)
+        self.clientsocket: socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.serveraddress: tuple = (None, None)
 
-    def connect(self, ip: str, port: int = PORT):
+    def connect(self, ip: str, port: int = PORT) -> None:
         i = 1
         while True:
             print('📡 Connexion au serveur ' + colored_info(f'{ip}:{port} 📡'))
@@ -152,7 +116,7 @@ class ClientSocket(BaseSocket):
                 print(colored_error('❌ Erreur de connexion! ❌'))
                 i += 1
                 print(f'🔁 Nouvelle tentative ( {i} ) 🔁')
-                time.sleep(5)
+                time.sleep(3)
             else:
                 print(colored_success('\n✅ Connexion etablie avec succes ✅\n'))
                 self.serveraddress = ip, port
@@ -165,11 +129,11 @@ class ServerSocket(BaseSocket):
     PORT = 4040
     IP = socket.gethostbyname(socket.gethostname())
 
-    def __init__(self, ip: str = IP, port: int = PORT):
+    def __init__(self):
         super().__init__()
         self.sock: socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, socket.SOCK_STREAM)
-        self.sock.bind((ip, port))
+        self.sock.bind((self.IP, self.PORT))
         self.clientaddress = (None, None)
 
     def listen(self):

