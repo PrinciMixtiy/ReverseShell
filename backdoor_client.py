@@ -42,10 +42,10 @@ class Client(ClientSocket):
 
             else:
                 # Tell the server to send the file in the commande
-                self.send_header_and_data(commande.encode(encoding=ENCODING))
+                self.send_header_and_data(self.clientsocket, commande.encode(encoding=ENCODING))
 
                 # Receiving the file or ('filenotfound' | 'isdir' | 'screenshot-error')
-                output = self.recv_header_and_data(show_progress=True)
+                output = self.recv_header_and_data(self.clientsocket, show_progress=True)
 
                 if output == 'filenotfound'.encode(encoding=ENCODING):
                     # The file doesn't exist on the server
@@ -79,8 +79,8 @@ class Client(ClientSocket):
 
     def run(self):
         while True:
-            self.send_header_and_data('info'.encode(encoding=ENCODING))
-            cwd = self.recv_header_and_data().decode(encoding=ENCODING)
+            self.send_header_and_data(self.clientsocket, 'info'.encode(encoding=ENCODING))
+            cwd = self.recv_header_and_data(self.clientsocket).decode(encoding=ENCODING)
             prompt = ('╭─' + colored_info(f' {self.serveraddress[0]}:{self.serveraddress[1]}') +
                       f' {cwd}' + f'\n╰─' + colored_info(' ❯ '))
 
@@ -88,7 +88,7 @@ class Client(ClientSocket):
             while commande == '':
                 commande = input(prompt)
             if commande.lower() == 'exit':
-                self.send_header_and_data(commande.lower().encode(encoding=ENCODING))
+                self.send_header_and_data(self.clientsocket, commande.lower().encode(encoding=ENCODING))
                 break
 
             try:
@@ -103,8 +103,8 @@ class Client(ClientSocket):
                     self.screenshot(splited_commande[0], splited_commande[1])
 
                 else:
-                    self.send_header_and_data(commande.encode(encoding=ENCODING))
-                    output = self.recv_header_and_data()
+                    self.send_header_and_data(self.clientsocket, commande.encode(encoding=ENCODING))
+                    output = self.recv_header_and_data(self.clientsocket)
                     print(output.decode(encoding=ENCODING))
 
         print(colored_success(colored_success(colored_success(f'\n‼️ Deconnecte\n'))))
