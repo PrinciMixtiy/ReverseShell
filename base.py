@@ -11,7 +11,7 @@ if 'windows' in platform.platform().lower():
 
 PORT = 4040
 HEADER_LEN = 64
-MAX_DATA_SIZE = 4096
+MAX_DATA_SIZE = 8192
 ENCODING = 'utf-8'
 DISCONNECT_MESSAGE = 'exit'
 
@@ -96,6 +96,8 @@ def change_dir(directory: str) -> str:
         os.chdir(directory)
         output = os.getcwd()
     except FileNotFoundError as err:
+        output = colored_error(str(err))
+    except PermissionError as err:
         output = colored_error(str(err))
 
     return output

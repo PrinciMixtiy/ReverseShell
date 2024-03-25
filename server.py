@@ -66,6 +66,8 @@ def handle_clients(addr: tuple):
                 result = 'file not found'
             except IsADirectoryError:
                 result = 'is a directory'
+            except PermissionError as err:
+                result = colored_error(str(err))
 
         elif splitted_command[0] == 'capture':
             try:
