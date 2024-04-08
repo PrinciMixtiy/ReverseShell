@@ -1,17 +1,18 @@
 import socket
 import os
 import platform
+import subprocess
 
 from tqdm import tqdm
 
-from output_color import colored_error
+from scripts.output_color import colored_error
 
 if 'windows' in platform.platform().lower():
     os.system('color')
 
 PORT = 4040
 HEADER_LEN = 64
-MAX_DATA_SIZE = 8192
+MAX_DATA_SIZE = 1048576
 ENCODING = 'utf-8'
 DISCONNECT_MESSAGE = 'exit'
 
@@ -29,7 +30,7 @@ def send_header_and_data(sock: socket.socket, data: bytes) -> None:
 
 
 def recv_single_data(recv_sock: socket.socket, data_len: int, show_progress: bool = False) -> bytes:
-    """Receive one data
+    """Receive one data from socket
 
     Args:
         recv_sock (socket.socket): socket that receive data
@@ -94,10 +95,28 @@ def change_dir(directory: str) -> str:
     """
     try:
         os.chdir(directory)
-        output = os.getcwd()
     except FileNotFoundError as err:
-        output = colored_error(str(err))
+        return colored_error(str(err))
     except PermissionError as err:
-        output = colored_error(str(err))
+        return colored_error(str(err))
 
-    return output
+    return os.getcwd()
+
+
+def run_shell_command(command: str) -> str:
+    """Run shell command
+
+    Args:
+        command (str): command to run
+
+    Returns:
+        str: output of command or error
+    """
+    output = subprocess.run(command, shell=True, universal_newlines=True,
+                            capture_output=True, check=False)
+    if output.stdout is None:
+        return colored_error('[Error], no output')
+    if output.stdout == '':
+        return colored_error(output.stderr)
+
+    return output.stdout

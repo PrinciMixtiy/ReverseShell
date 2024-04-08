@@ -1,127 +1,175 @@
 import socket
-import subprocess
 import threading
 import platform
 import os
+import json
 
 from PIL import ImageGrab
 
 from base import PORT, ENCODING, DISCONNECT_MESSAGE
-from base import change_dir, send_header_and_data, recv_header_and_data
+from base import change_dir, send_header_and_data, recv_header_and_data, run_shell_command
 
-from output_color import colored_error, colored_info, colored_success
-from splitter import command_splitter
-
-SERVER_IP = socket.gethostbyname(socket.gethostname())
-ADDR = (SERVER_IP, PORT)
-
-clients = {}
-
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, socket.SOCK_STREAM)
-
-server_socket.bind(ADDR)
+from scripts.output_color import colored_error, colored_info, colored_success
+from scripts.splitter import command_splitter
 
 
-def handle_clients(addr: tuple):
+def handle_clients(clients: dict, addr: tuple) -> None:
     """Handle each client connected to the server
 
     Args:
+        clients (dict): dictionary of all clients connected to the server
+                        {client_address: client_socket,}
         addr (tuple): address of client
     """
-    print(colored_success('💻 New connection: ') +
-          f'[{addr[0]}:{addr[1]}] connected 💻 ' +
-          colored_info(f'[{threading.active_count() - 1}  Clients]')
+    print(colored_success('[New connection]: ') +
+          f'[{addr[0]}:{addr[1]}] connected.' +
+          colored_info(f'[{threading.active_count() - 1}  Clients 💻]')
           )
 
     while True:
         command = recv_header_and_data(recv_sock=clients[addr]).decode(encoding=ENCODING)
         splitted_command = command_splitter(command)
+        result = ''
 
-        if not command:
+        if (not command) or (command == DISCONNECT_MESSAGE):
+            # Disconnect the client.
             break
 
-        if command == DISCONNECT_MESSAGE:
-            break
+        # --------------- Those are not directly used by clients ------------------
 
-        if command.lower() == 'os':
-            result = platform.platform() + '\n'
-
-        elif command.lower() == 'info':
+        if command == 'info':
+            # Send current working directory
             result = os.getcwd()
 
-        elif command.lower() == 'clients':
-            result = ''
-            for num, address in enumerate(clients.keys()):
-                result += f'[Client {num+1}]: [{address[0]}:{address[1]}]\n'
+        # --------------- Commands to run before download -------------------------
+        elif splitted_command[0] == 'path-exists':
+            # Send True if path exists else False. (serialized with json)
+            result = json.dumps(os.path.exists(" ".join(splitted_command[1:])))
+
+        elif splitted_command[0] == 'has-permission':
+            # Send True if has permission to read on path else False. (serialized with json)
+            result = json.dumps(os.access(splitted_command[1], mode=os.R_OK))
+
+        elif splitted_command[0] == 'path-type':
+            # Send path type. ('directory' or 'file')
+            if os.path.isdir(splitted_command[-1]):
+                result = 'directory'
+            elif os.path.isfile(splitted_command[-1]):
+                result = 'file'
+
+        elif splitted_command[0] == 'list-content':
+            # Send list of directory contents. (serialized with json)
+            result = json.dumps(os.listdir(" ".join(splitted_command[1:])))
+        # -------------------------------------------------------------------------
+
+        # -------------------------------------------------------------------------
+
+        # --------------- Commands used by clients --------------------------------
 
         elif splitted_command[0] == 'cd':
-            result = change_dir(splitted_command[1])
+            # Change directory.
+            if len(splitted_command) == 2:
+                result = change_dir(splitted_command[1])
+            else:
+                result = colored_error('[Argument Error] for cd command.')
+
+        elif command == 'os':
+            # Send Information about OS.
+            result = platform.platform()
+
+        elif command == 'clients':
+            # Send list of clients connected to the server.
+            client_list = []
+            for num, address in enumerate(clients.keys()):
+                client_list.append(f'[Client {num+1}]: [{address[0]}:{address[1]}]')
+            result = json.dumps(client_list)
 
         elif splitted_command[0] == 'download':
-            try:
-                with open(splitted_command[1], 'rb') as f:
-                    result = f.read()
-            except FileNotFoundError:
-                result = 'file not found'
-            except IsADirectoryError:
-                result = 'is a directory'
-            except PermissionError as err:
-                result = colored_error(str(err))
+            # Send file or directory to the client.
+            path = splitted_command[-1]
+            with open(path, 'rb') as f:
+                result = f.read()
 
         elif splitted_command[0] == 'capture':
+            # Take and send screenshot.
             try:
                 image = ImageGrab.grab()
-                image.save(splitted_command[1], 'png')
-                with open(splitted_command[1], 'rb') as img:
+                image.save('.screenshot.png', 'png')
+                with open('.screenshot.png', 'rb') as img:
                     result = img.read()
-                os.remove(splitted_command[1])
+                os.remove('.screenshot.png')
             except OSError:
                 result = 'screenshot-error'
+        # -------------------------------------------------------------------------
 
+        # --------------- Shell Commands ------------------------------------------
         else:
-            output = subprocess.run(command, shell=True, universal_newlines=True,
-                                    capture_output=True, check=False)
-            if output.stdout is None:
-                result = colored_error('❗ Error')
-            elif output.stdout == '':
-                result = colored_error(output.stderr)
-            else:
-                result = output.stdout
+            result = run_shell_command(command)
+        # -------------------------------------------------------------------------
 
-        if command.lower() != 'info':
+        if splitted_command[0] not in \
+                ['info', 'path-exists', 'has-permission', 'path-type', 'list-content']:
             print(colored_info(f'[{addr[0]}:{addr[1]}] ⌨ >') + f' {command}')
 
         if not result:
-            result = colored_error('❗ Error')
+            result = colored_error('[Error], no output')
 
         if isinstance(result, str):
             result = result.encode(encoding=ENCODING)
 
         send_header_and_data(clients[addr], result)
 
-    print(colored_success(f'👋 [{addr[0]}: {addr[1]}] Disconnected'))
+    print(colored_success(f'[{addr[0]}: {addr[1]}] Disconnected 👋'))
     del clients[addr]
 
 
-def start_server():
+def start_server(addr: tuple, sock: socket.socket) -> None:
     """Start the server and listen for clients connections
     """
-    server_socket.listen()
-    print('📡 Server start at ' + colored_info(f'[{SERVER_IP}:{PORT}]') + ' 📡')
+    clients = {}
+
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, socket.SOCK_STREAM)
+    sock.bind(addr)
+    sock.listen()
+
+    print(colored_success('\n[Server start]') + ' at ' + colored_info(f'[{addr[0]}:{addr[1]}]') + ' 📡')
+
     while True:
         try:
-            client_socket, client_address = server_socket.accept()
+            client_socket, client_address = sock.accept()
         except KeyboardInterrupt:
-            break
+            confirm = input('\nDo you want to stop the server? [y/n]: ')
+            if 'y' in confirm.lower():
+                break
+            else:
+                continue
         else:
             clients[client_address] = client_socket
-            thread = threading.Thread(target=handle_clients, args=(client_address,))
+            thread = threading.Thread(target=handle_clients, args=(clients, client_address,))
             thread.start()
 
-    server_socket.close()
-    print(colored_error('👻 Server down.'))
+    sock.close()
+    print(colored_error('[Server down] 👻👋'))
 
 
 if __name__ == '__main__':
-    start_server()
+    while True:
+        ip_list = socket.getaddrinfo(socket.gethostname(), PORT, family=socket.AF_INET)
+        print(colored_info('[IP List]') + ' List of IP address\n')
+        for i, ip in enumerate(ip_list):
+            print(colored_info(f'{i+1}') + f' - {ip[-1]}')
+
+        print('\nIn which address would you like to run the server?')
+
+        try:
+            server_index = int(input(colored_info('[IP Choice]: ')))
+            server_address = ip_list[server_index-1][-1]
+        except (ValueError, IndexError):
+            print(colored_error('\n[Choice Error] ' + f'Chose between {[i+1 for i in range(len(ip_list))]}'))
+        except KeyboardInterrupt:
+            print(colored_error('Exit'))
+            break
+        else:
+            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            start_server(server_address, server_socket)
+            break

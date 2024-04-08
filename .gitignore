@@ -3,5 +3,7 @@ __pycache__/
 build/
 dist/
 compiled/
+testing/
 *.spec
 *.png
+TODO.md

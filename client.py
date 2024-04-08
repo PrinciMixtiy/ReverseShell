@@ -1,126 +1,185 @@
+import os.path
 import socket
 import time
-import subprocess
+import json
 
 from base import PORT, DISCONNECT_MESSAGE, ENCODING
-from base import recv_header_and_data, send_header_and_data, change_dir
-from output_color import colored_error, colored_info, colored_success
-from splitter import command_splitter
+from base import recv_header_and_data, send_header_and_data, change_dir, run_shell_command
+from scripts.output_color import colored_error, colored_info, colored_success
+from scripts.splitter import command_splitter
 
 RETRY_CONNECT_DELAY = 2
 
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 
-def connect(ip: str) -> None:
+def connect(server_address: tuple) -> None:
     """Connect to a server
 
     Args:
-        ip (str): Server ip address
+        server_address (tuple): Address of server to connect with
     """
     retry_count = 1
     while True:
-        print('📡 Connect to server ' + colored_info(f'[{ip}:{PORT}]') + ' 📡')
+        print(colored_info('\n[Connection to server] ') +
+              f'[{server_address[0]}:{server_address[1]}] 📡')
         try:
-            client_socket.connect((ip, PORT))
-        except ConnectionRefusedError:
-            print(colored_error('❌ Connection error ❌'))
+            client_socket.connect(server_address)
+        except (ConnectionRefusedError, TimeoutError):
+            print(colored_error('[Connection Error]'))
             retry_count += 1
-            print('🔁 Retry to connect ' + colored_info(f'[{retry_count} retry]') + ' 🔁')
+            print('[Retry to connect] ' + colored_info(f'[{retry_count} retry]') + ' 🔁')
             time.sleep(RETRY_CONNECT_DELAY)
         else:
-            print(colored_success('✅ Connected with server ✅'))
+            print(colored_success('[Connection OK]') + '✅ Connected with server ✅\n')
             break
 
 
-def file_already_exist(file_name: str):
-    """Check if file exist or not
+def send_command(command: str, *args, show_progress=False) -> bytes:
+    """Send command with arguments to the server.
 
     Args:
-        file_name (str): file name or file path
+        command (str): command to send
+        *args (tuple, optional): command parameters
+        show_progress (bool, optional): Show progressbar if True. Defaults to False.
 
     Returns:
-        str | bool: True | False | "is a directory"
+        bytes: output of command
     """
-    try:
-        file = open(file_name, 'rb')
-    except FileNotFoundError:
-        return False
-    except IsADirectoryError:
-        return 'is a directory'
-
-    file.close()
-    return True
+    final_command = " ".join([command] + list(args))
+    send_header_and_data(client_socket, final_command.encode(encoding=ENCODING))
+    return recv_header_and_data(client_socket, show_progress=show_progress)
 
 
-def download_file(command: str, destination: str) -> None:
+def check_path_type(path: str) -> str:
+    """Check if the path on server is directory or file.
+
+    Args:
+        path (str): path to check
+
+    Returns:
+        str: 'directory' or 'file'
+    """
+    return send_command('path-type', f'"{path}"').decode(encoding=ENCODING)
+
+
+def check_path_exists(path: str) -> bool:
+    """Check if the path exists on the server.
+
+    Args:
+        path (str): path to check
+
+    Returns:
+        bool: True if exist else False.
+    """
+    result = send_command('path-exists', f'"{path}"').decode(encoding=ENCODING)
+    return json.loads(result)
+
+
+def check_path_permission(path: str) -> bool:
+    """Check if client has permission to read path on the server.
+
+    Args:
+        path (str): path to check
+
+    Returns:
+        bool: True if client has permission else False.
+    """
+    result = send_command('has-permission', f'"{path}"').decode(encoding=ENCODING)
+    return json.loads(result)
+
+
+def list_dir_content(path: str) -> list:
+    """List the content of directory on the server
+
+    Args:
+        path (str): path of directory
+
+    Returns:
+        list: list of all contents
+    """
+    result = send_command('list-content', f'"{path}"').decode(encoding=ENCODING)
+    return json.loads(result)
+
+
+def download_file(path: str, destination: str) -> None:
     """Download file from server to client machine
 
     Args:
-        command (str): command containing the file path on server and client destination
+        path (str): file path on server
         destination (str): client destination path
     """
-    splitted_command = command_splitter(command)
-    error = False
+    print('Downloading ' + colored_info(path))
+    output = send_command('download', f'"{path}"', show_progress=True)
 
-    if destination.lower() == 'q':
-        print(colored_error("‼️ File not downloaded."))
+    # Write file to the destination
+    with open(destination, 'wb') as f:
+        f.write(output)
 
-    else:
-        if file_already_exist(destination) == 'is a directory':
-            print(colored_error(f"‼️ {destination} is a directory."))
-            error = True
+    # Print message that the file has been downloaded successfully
+    print('Download ' + colored_info(f'{path}') + ' to ' +
+          colored_info(f'{destination}\n'))
 
-        elif file_already_exist(destination):
-            print(colored_error(f'‼️ File {destination} already exists.'))
-            error = True
+
+def download(path: str, destination: str) -> None:
+    """Download file or folder on the server
+
+    Args:
+        path (str): path of file or folder
+        destination (str): client destination path
+    """
+    # Check that the given path exists on the server
+    if check_path_exists(path):
+
+        if os.path.exists(destination):
+            # Check if destination already exist on local machine
+            # Ask for new destination if already exists
+            print(colored_error(f'[Duplicated file error] Destination "{destination}" already exists.'))
+            new_destination = input('New destination: ' + colored_info(': '))
+            return download(path, new_destination)
+
+        if check_path_permission(path):
+            # check if path on server is directory or file
+            path_type = check_path_type(path)
+
+            if path_type == 'file':
+                # download the file if path type is file
+                download_file(path, destination)
+
+            elif path_type == 'directory':
+                # if directory, create folder on local machine, get list of directory content
+                # and download each file and directory inside the directory
+                os.mkdir(destination)
+                os.chdir(destination)
+                dir_contents = list_dir_content(path)
+                for file in dir_contents:
+                    file_path = os.path.join(path, file)
+                    download(file_path, file)
+                os.chdir('..')
 
         else:
-            # Tell the server to send the file specified in the command
-            send_header_and_data(client_socket, command.encode(encoding=ENCODING))
+            print(colored_error(f'[Permission Error] for path "{path}".'))
 
-            # Receiving the file or ('file not found' | 'is a directory' | 'screenshot-error')
-            output = recv_header_and_data(client_socket, show_progress=True)
-
-            if output == 'file not found'.encode(encoding=ENCODING):
-                # The file doesn't exist on the server
-                print(colored_error("‼️ File doesn't exists."))
-
-            elif output == 'is a directory'.encode(encoding=ENCODING):
-                # The file name specified is a directory
-                print(colored_error("‼️ Can't download a directory."))
-
-            elif output == 'screenshot-error'.encode(encoding=ENCODING):
-                # Error for screenshot command
-                print(colored_error("‼️ Can't take a screenshot."))
-
-            else:
-                # The file is received successfully
-                # Write the file to the destination
-                with open(destination, 'wb') as f:
-                    f.write(output)
-                print('Download ' + colored_info(f'{splitted_command[1]}') + ' to ' +
-                      colored_info(f'{destination}\n'))
-
-        if error:
-            new_destination = input('New destination file (or "q" to exit)'
-                                    + colored_info(': '))
-            download_file(command, new_destination)
+    else:
+        print(colored_error(f"[File Not Found Error] {path} doesn't exists."))
 
 
-def screenshot(command: str, destination: str) -> None:
+def screenshot(destination: str) -> None:
     """Receive a server screenshot
 
     Args:
-        command (str): command containing the destination path
         destination (str): destination path
     """
-    splitted_command = command_splitter(command)
-    if len(splitted_command) < 3:
-        splitted_command.insert(1, '.screenshot.png')
+    output = send_command('capture', show_progress=True)
 
-    new_command = " ".join(splitted_command)
-    download_file(new_command, destination)
+    if output == 'screenshot-error'.encode(encoding=ENCODING):
+        # Error for screenshot command
+        print(colored_error("[Screenshot Error]") + "Can't take a screenshot.")
+
+    else:
+        # Write the binary file on local machine
+        with open(destination, 'wb') as f:
+            f.write(output)
 
 
 def run(server_address: tuple) -> None:
@@ -130,56 +189,89 @@ def run(server_address: tuple) -> None:
         server_address (tuple): address of server (ip, port)
     """
     while True:
-        send_header_and_data(client_socket, 'info'.encode(encoding=ENCODING))
-        cwd = recv_header_and_data(client_socket).decode(encoding=ENCODING)
-        prompt = ('╭─' + colored_info(f' {server_address[0]}:{server_address[1]}') +
-                  f' {cwd}' + '\n╰─' + colored_info(' ❯ '))
-
-        command = ''
-        while command == '':
-            command = input(prompt)
-        if command.lower() == DISCONNECT_MESSAGE:
-            send_header_and_data(client_socket, command.lower().encode(encoding=ENCODING))
-            break
-
         try:
-            splitted_command = command_splitter(command)
-        except IndexError:
-            print(colored_error('‼️ Invalid command'))
-        else:
-            if splitted_command[0] == 'local':
-                cmd = " ".join(splitted_command[1:])
-                output = subprocess.run(cmd, shell=True, universal_newlines=True,
-                                        capture_output=True, check=False)
-                if command_splitter(cmd)[0] == 'cd':
-                    result = change_dir(command_splitter(cmd)[1])
+            # Get server current working directory and make command prompt with.
+            cwd = send_command('info').decode(encoding=ENCODING)
+            prompt = ('╭─' + colored_info(f' {server_address[0]}:{server_address[1]}') +
+                      f' {cwd}' + '\n╰─' + colored_info(' ❯ '))
 
-                else:
-                    if output.stdout is None:
-                        result = colored_error('❗ Error')
-                    elif output.stdout == '':
-                        result = colored_error(output.stderr)
-                    else:
-                        result = output.stdout
+            command = ''
+            while command == '':
+                # Ask for a command to send
+                command = input(prompt)
 
-                print(result)
+            if command == DISCONNECT_MESSAGE:
+                # Disconnect from server if command == 'exit'
+                send_header_and_data(client_socket, command.lower().encode(encoding=ENCODING))
+                break
 
-            elif len(splitted_command) == 3 and splitted_command[0] == 'download':
-                download_file(command, splitted_command[-1])
+            try:
+                # Convert command into list of command and arguments
+                splitted_command = command_splitter(command)
 
-            elif len(splitted_command) == 2 and splitted_command[0] == 'capture':
-                screenshot(command, splitted_command[1])
+            except IndexError:
+                # For invalid command
+                print(colored_error('[Command Error] Your command is invalid.'))
 
             else:
-                send_header_and_data(client_socket, command.encode(encoding=ENCODING))
-                output = recv_header_and_data(client_socket)
-                print(output.decode(encoding=ENCODING))
+                if splitted_command[0] == 'local':
+                    # Execute local commands
+                    # Remove 'local' from command
+                    cmd = " ".join(splitted_command[1:])
 
-    print(colored_success(colored_success(colored_success('💻 You are Disconnected.'))))
+                    result = ''
+                    if command_splitter(cmd)[0] == 'cd':
+                        if len(command_splitter(cmd)) == 2:
+                            result = change_dir(command_splitter(cmd)[1])
+                        else:
+                            print(colored_error('[Argument Error]') + 'cd command need one parameter.')
+                    else:
+                        result = run_shell_command(cmd)
+
+                    print(result)
+
+                elif splitted_command[0] == 'download':
+                    if len(splitted_command) == 3:
+                        download(splitted_command[-2], splitted_command[-1])
+                    elif len(splitted_command) == 2:
+                        download(splitted_command[-1], splitted_command[-1])
+                    elif len(splitted_command) < 2:
+                        print(colored_error('[Parameter Error]') +
+                              'download command need one or two arguments.')
+                    else:
+                        print(colored_error('[Parameter Error]') +
+                              'download command accept two arguments maximum.')
+
+                elif splitted_command[0] == 'capture':
+                    if len(splitted_command) == 2:
+                        screenshot(splitted_command[1])
+                    else:
+                        print(colored_error('[Parameter Error]') +
+                              'capture command need one argument.')
+
+                else:
+                    output = send_command(command).decode(encoding=ENCODING)
+                    print(output)
+
+        except KeyboardInterrupt:
+            continue
+
+    print(colored_success(colored_success(colored_error('You are Disconnected.'))))
     client_socket.close()
 
 
 if __name__ == '__main__':
-    server_ip = input('💻 Server IP: ')
-    connect(server_ip)
-    run((server_ip, PORT))
+    import ipaddress
+    while True:
+        try:
+            server_ip = input(colored_info('[Server IP]: '))
+            server_ip = ipaddress.IPv4Address(server_ip)
+        except ipaddress.AddressValueError as err:
+            print(colored_error('[IP Error]') + ' Invalid IPv4 address.\n' + colored_error(str(err)) + '\n')
+        except KeyboardInterrupt:
+            break
+        else:
+            server_addr = (server_ip.exploded, PORT)
+            connect(server_addr)
+            run(server_addr)
+            break
