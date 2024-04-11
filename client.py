@@ -29,10 +29,10 @@ class Client:
         self.server: Server = Server()
 
     def connect(self, server_address: tuple) -> None:
-        """Connect to a server
+        """Connect to a server.
 
         Args:
-            server_address (tuple): Address of server to connect with
+            server_address (tuple): Address of server to connect with.
         """
         retry_count = 1
         while True:
@@ -56,12 +56,12 @@ class Client:
         """Send command with arguments to the server.
 
         Args:
-            command (str): command to send
-            *args (tuple, optional): command parameters
+            command (str): Command to send.
+            *args (tuple, optional): Command parameters.
             show_progress (bool, optional): Show progressbar if True. Defaults to False.
 
         Returns:
-            bytes: output of command
+            bytes: Output of the command.
         """
         final_command = " ".join([command] + list(args))
         send_header_and_data(
@@ -106,20 +106,20 @@ class Client:
         return json.loads(result)
 
     def list_dir_content(self, path: str) -> list:
-        """List the content of directory on the server
+        """List the content of directory on the server.
 
         Args:
             path (str): path of directory
 
         Returns:
-            list: list of all contents
+            list: List of directory contents.
         """
         result = self.send_command(
             'list-content', f'"{path}"').decode(encoding=ENCODING)
         return json.loads(result)
 
     def download_file(self, path: str, destination: str) -> None:
-        """Download file from server to client machine
+        """Download file from server to client machine.
 
         Args:
             path (str): file path on server
@@ -128,27 +128,27 @@ class Client:
         print('Downloading ' + colored_info(path))
         output = self.send_command('download', f'"{path}"', show_progress=True)
 
-        # Write file to the destination
+        # Write file to the destination.
         with open(destination, 'wb') as f:
             f.write(output)
 
-        # Print message that the file has been downloaded successfully
+        # Print message that the file has been downloaded successfully.
         print('Download ' + colored_info(f'{path}') + ' to ' +
               colored_info(f'{destination}\n'))
 
     def download(self, path: str, destination: str) -> None:
-        """Download file or folder on the server
+        """Download file or folder on the server.
 
         Args:
             path (str): path of file or folder
             destination (str): client destination path
         """
-        # Check that the given path exists on the server
+        # Check that the given path exists on the server.
         if self.check_path_exists(path):
 
             if os.path.exists(destination):
-                # Check if destination already exist on local machine
-                # Ask for new destination if already exists
+                # Check if destination already exist on local machine.
+                # Ask for new destination if already exists.
                 print(colored_error(f'[Duplicated file error] Destination "{
                       destination}" already exists.'))
                 new_destination = input(
@@ -156,16 +156,16 @@ class Client:
                 return self.download(path, new_destination)
 
             if self.check_path_permission(path):
-                # check if path on server is directory or file
+                # Check if path on server is directory or file.
                 path_type = self.check_path_type(path)
 
                 if path_type == 'file':
-                    # download the file if path type is file
+                    # Download the file if path type is file.
                     self.download_file(path, destination)
 
                 elif path_type == 'directory':
                     # if directory, create folder on local machine, get list of directory content
-                    # and download each file and directory inside the directory
+                    # and download each file and directory inside the directory.
                     os.mkdir(destination)
                     os.chdir(destination)
                     dir_contents = self.list_dir_content(path)
@@ -182,7 +182,7 @@ class Client:
                 f"[File Not Found Error] {path} doesn't exists."))
 
     def screenshot(self, destination: str) -> None:
-        """Receive a server screenshot
+        """Receive a server screenshot.
 
         Args:
             destination (str): destination path
@@ -195,12 +195,12 @@ class Client:
                   "Can't take a screenshot.")
 
         else:
-            # Write the binary file on local machine
+            # Write the binary file on local machine.
             with open(destination, 'wb') as f:
                 f.write(output)
 
     def run(self) -> None:
-        """Run client socket (run connect(server_ip) before)
+        """Run client socket (run connect(server_address) before).
 
         Args:
             server_address (tuple): address of server (ip, port)
@@ -214,17 +214,17 @@ class Client:
 
                 command = ''
                 while command == '':
-                    # Ask for a command to send
+                    # Ask for a command to send.
                     command = input(prompt)
 
                 if command == DISCONNECT_MESSAGE:
-                    # Disconnect from server if command == 'exit'
+                    # Disconnect from server if command == 'exit'.
                     send_header_and_data(
                         self.sock, command.lower().encode(encoding=ENCODING))
                     break
 
                 try:
-                    # Convert command into list of command and arguments
+                    # Convert command into list.
                     splitted_command = command_splitter(command)
 
                 except IndexError:
@@ -234,8 +234,8 @@ class Client:
 
                 else:
                     if splitted_command[0] == 'local':
-                        # Execute local commands
-                        # Remove 'local' from command
+                        # Execute local commands.
+                        # Remove 'local' from splitted_command.
                         cmd = " ".join(splitted_command[1:])
 
                         result = ''

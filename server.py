@@ -35,24 +35,30 @@ class Server:
         """Handle each client connected to the server.
 
         Args:
-            client (dict): client that is connected and handled by the server.
+            client (dict): client connected to the server.
         """
+        
+        # Print message when a client is connected.
         print(colored_success('[New connection]: ') +
               f'[{client.addr[0]}:{client.addr[1]}] connected.' +
               colored_info(f'[{len(self.clients)}  Clients 💻]')
               )
 
+        # Listen for client command and send output to the client.
         while True:
+            # Receive command.
             command = recv_header_and_data(
                 recv_sock=client.sock).decode(encoding=ENCODING)
+            # Transform command into list.
             splitted_command = command_splitter(command)
+
             result = ''
 
             if (not command) or (command == DISCONNECT_MESSAGE):
-                # Disconnect the client.
+                # Stop listen and disconnect the client.
                 break
 
-            # --------------- Those are not directly used by clients ------------------
+            # --------------- Those commands are not directly used by clients ---------
 
             if command == 'info':
                 # Send current working directory.
@@ -83,13 +89,14 @@ class Server:
 
             # -------------------------------------------------------------------------
 
-            # --------------- Commands used by clients --------------------------------
+            # --------------- Commands directly used by clients -----------------------
 
             elif splitted_command[0] == 'cd':
-                # Change directory.
+                # Change directory and send current working directory path.
                 if len(splitted_command) == 2:
                     result = change_dir(splitted_command[1])
                 else:
+                    # Send an error message if the path doesn't exists.
                     result = colored_error('[Argument Error] for cd command.')
 
             elif command == 'os':
@@ -102,13 +109,13 @@ class Server:
                 result = str(client_list)
 
             elif splitted_command[0] == 'download':
-                # Send file or directory to the client.
+                # Send file or directory contents to the client.
                 path = splitted_command[-1]
                 with open(path, 'rb') as f:
                     result = f.read()
 
             elif splitted_command[0] == 'capture':
-                # Take and send screenshot.
+                # Take, send and delete screenshot.
                 try:
                     image = ImageGrab.grab()
                     image.save('.screenshot.png', 'png')
@@ -126,17 +133,23 @@ class Server:
 
             if splitted_command[0] not in \
                     ['info', 'path-exists', 'has-permission', 'path-type', 'list-content']:
+                # Print commands sent by the client and exclude some commands.
                 print(colored_info(
                     f'[{client.addr[0]}:{client.addr[1]}] ⌨ >') + f' {command}')
 
             if not result:
+                # Send an error message if the command has no output.
                 result = colored_error('[Error], no output')
 
             if isinstance(result, str):
+                # Encode the output if the output is str object.
                 result = result.encode(encoding=ENCODING)
 
+            # Send the output to the client.
             send_header_and_data(client.sock, result)
 
+        # Print a disconnect message when client is disconnected
+        # and remove the client from server clients list.
         print(colored_success(
             f'[{client.addr[0]}: {client.addr[1]}] Disconnected 👋'))
         self.clients.remove(client)
@@ -145,11 +158,13 @@ class Server:
         """Start the server and listen for clients connections.
         """
 
+        # Socket configuration.
         self.sock.setsockopt(
             socket.SOL_SOCKET, socket.SO_REUSEADDR, socket.SOCK_STREAM)
         self.sock.bind(self.addr)
         self.sock.listen()
 
+        # Print message when server is up.
         print(colored_success('\n[Server start]') + ' at ' +
               colored_info(f'[{self.addr[0]}:{self.addr[1]}]') + ' 📡')
 
@@ -171,12 +186,14 @@ class Server:
                     target=self.handle_clients, args=(client,))
                 thread.start()
 
+        # Close socket and print message when server is down.
         self.sock.close()
         print(colored_error('[Server down] 👻👋'))
 
 
 if __name__ == '__main__':
     while True:
+        # Print information about machine available IP addresses.
         ip_list = socket.getaddrinfo(
             socket.gethostname(), PORT, family=socket.AF_INET)
         print(colored_info('[IP List]') + ' List of IP address\n')
@@ -185,6 +202,7 @@ if __name__ == '__main__':
 
         print('\nIn which address would you like to run the server?')
 
+        # Chose the IP address of the server.
         try:
             server_index = int(input(colored_info('[IP Choice]: ')))
             server_address = ip_list[server_index-1][-1]
@@ -195,6 +213,7 @@ if __name__ == '__main__':
             print(colored_error('Exit'))
             break
         else:
+            # Run the server.
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server = Server(server_address, server_socket)
             server.start()
