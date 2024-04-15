@@ -1,3 +1,6 @@
+from .output_color import colored_error
+
+
 def command_splitter(cmd: str) -> list:
     """Convert a command from user input to list of command and arguments
 
@@ -35,3 +38,12 @@ def command_splitter(cmd: str) -> list:
             splitted_command.remove('')
 
     return splitted_command
+
+
+def check_and_split_command(command: str) -> list:
+    try:
+        splitted_command = command_splitter(command)
+    except IndexError:
+        raise IndexError(colored_error('[Command Error] Your command is invalid.'))
+    else:
+        return splitted_command

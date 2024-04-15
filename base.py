@@ -29,7 +29,7 @@ def send_header_and_data(sock: socket.socket, data: bytes) -> None:
     sock.sendall(data)
 
 
-def recv_single_data(recv_sock: socket.socket, data_len: int, show_progress: bool = False) -> bytes:
+def recv_single_data(recv_sock: socket.socket, data_len: int, desc: str = None, show_progress: bool = False) -> bytes:
     """Receive one data from socket
 
     Args:
@@ -41,11 +41,13 @@ def recv_single_data(recv_sock: socket.socket, data_len: int, show_progress: boo
     Returns:
         bytes: data received
     """
+    desc = "Receiving data" if not desc else desc
     total_data = None
     len_bytes_received = 0
+    show_progress = False if data_len < MAX_DATA_SIZE else show_progress
 
     if show_progress:
-        progress = tqdm(range(data_len), "Receiving data", unit="B", unit_scale=True,
+        progress = tqdm(range(data_len), desc, unit="B", unit_scale=True,
                         unit_divisor=MAX_DATA_SIZE)
 
     while len_bytes_received < data_len:
@@ -67,7 +69,7 @@ def recv_single_data(recv_sock: socket.socket, data_len: int, show_progress: boo
     return total_data
 
 
-def recv_header_and_data(recv_sock: socket.socket, show_progress: bool = False) -> bytes:
+def recv_header_and_data(recv_sock: socket.socket, desc: str = None, show_progress: bool = False) -> bytes:
     """Receive data header (data length) then data
 
     Args:
@@ -80,7 +82,7 @@ def recv_header_and_data(recv_sock: socket.socket, show_progress: bool = False) 
     """
     header = recv_single_data(recv_sock, HEADER_LEN)
     header = int(header.decode(encoding=ENCODING))
-    received_data = recv_single_data(recv_sock, header, show_progress)
+    received_data = recv_single_data(recv_sock, header, desc, show_progress)
     return received_data
 
 
@@ -103,20 +105,25 @@ def change_dir(directory: str) -> str:
     return os.getcwd()
 
 
-def run_shell_command(command: str) -> str:
+def run_shell_command(command: str, return_output: bool = True) -> str:
     """Run shell command
 
     Args:
         command (str): command to run
+        return_output (boot): return the output of command if True.
 
     Returns:
         str: output of command or error
     """
-    output = subprocess.run(command, shell=True, universal_newlines=True,
-                            capture_output=True, check=False)
-    if output.stdout is None:
-        return colored_error('[Error], no output')
-    if output.stdout == '':
-        return colored_error(output.stderr)
+    if return_output:
+        output = subprocess.run(command, shell=True, universal_newlines=True,
+                                capture_output=True, check=False)
+        if output.stdout is None:
+            return colored_error('[Error], no output')
+        if output.stdout == '':
+            return colored_error(output.stderr)
 
-    return output.stdout
+        return output.stdout
+
+    subprocess.run(command, shell=True, universal_newlines=True,
+                   capture_output=True, check=False)

@@ -1,11 +1,11 @@
-# Backdoor
+# Reverse Shell
 
-Backdoor project implemented with python and socket.
+Reverse shell project implemented with python and socket.
 
-*Target*: server.py
-*Hacker*: client.py
+*Targets*: client.py  
+*Hacker*: server.py
 
-![Project screenshot](assets/images/backdoor.png)
+![Project screenshot](assets/images/reverse_shell.png)
 
 ## Python Requirements
 
@@ -21,10 +21,11 @@ python -m pip install pillow termcolor tqdm
 
 ### 1- Run the server
 
-Run `server.py` on the target machine.  
-The target machine must be on the same local network and can be the same machine where clients run.
+Run `server.py` on your machine.
 
 ```shell
+python server.py
+
 [IP List] List of IP address
 
 1 - ('127.0.0.1', 4040)
@@ -36,9 +37,10 @@ In which address would you like to run the server?
 Chose the your IP address where server will running and press Enter.
 
 ```shell
-python server.py
-
 [Server start] at [127.0.0.1:4040] 📡
+
+╭─ [127.0.0.1:4040][0 Clients]
+╰─ ❯
 ```
 
 ### 2- Run client
@@ -55,26 +57,31 @@ python client.py
 [Server IP]: 127.0.0.1
 ```
 
-```shell
-[Connection to server] [192.168.56.1:4040] 📡
-[Connection OK]✅ Connected with server ✅
-╭─ 127.0.0.1:4040 /Backdoor
-╰─ ❯ 
-```
-
-### 3- Send command to the server
+## Commands available on the server
 
 ```shell
-╭─ 127.0.0.1:4040 /Backdoor
-╰─ ❯ ls
+╭─ 127.0.0.1:4040[0 Clients]
+╰─ ❯
+
+# Show all clients connected with server.
+clients show
+
+# Select a client.
+clients connect <client number>
+
+# Disconnect a client.
+clients disconnect <client number>
+
+# Shut down the server.
+exit
 ```
 
-## Specials commands
+## Commands available after selecting a client.
 
 ### 1- Download file or folder on the server
 
 ```shell
-download <filename or foldername> <destination>
+download <filename or foldername> <destination:optional>
 ```
 
 ### 2- Take screenshot of server
